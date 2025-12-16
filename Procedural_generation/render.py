@@ -474,7 +474,10 @@ def render():
             else:
                 raise ValueError("Invalid trim type")
         else:
-            log_file_dir = "/home/scai/Workspace/hshi33/virtualhome/data/full_dataset/nolang_episodes"
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            log_file_dir = os.getenv("NOLANG_EPISODES_DIR", "")
         if test_id in episode_list:
             log_file_path = log_file_dir + "/" + "logs_episode.{}_iter.0.pik".format(test_id)
         else:

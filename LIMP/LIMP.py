@@ -1,3 +1,6 @@
+# LIMP.py 脚本：多模态多智能体心智推理的主入口
+# 功能：读取问题与文本，解析人物与其动作/话语，估计各选项的概率并输出答案
+# 配置：通过 .env 中的 LLM_API_KEY/LLM_BASE_URL/LLM_MODEL_NAME 设置模型与服务
 import os
 import json
 import text_parsing
@@ -10,11 +13,23 @@ import visual_action_extraction
 import ipdb
 import random
 from tqdm import tqdm
+from dotenv import load_dotenv
+
+# 加载 .env 环境变量（模型参数与密钥）
+load_dotenv()
+
+# 初始化 LLM 客户端（从环境变量读取密钥与服务地址）
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 
-def extract_name_from_question(question):
+# 从问题文本中抽取涉及的所有人名（第一个通常为主角）
+def extract_name_from_question(question: str) -> list[str]:
+    """从问题文本中抽取人名并确定主角
+    参数: question(str): 问题与选项的完整文本
+    返回: list[str]: 名单列表，首元素为主角
+    """
     prompt = """You will read a question asking about a person's mental state or actions. From the prompt and options, extract any name of the people you encountered. Determine the person whose mental state or action the question is asking about. Produce your output in this form: [main person's name, name2, name3, ...]. Do not record names appearing multiple times, and do not give any extra information. An example question is like this:
     Example Question: Given that Emma has seen David walking to school yesterday, what will Emma most likely believe
     A David will walk to school tomorrow
@@ -30,13 +45,19 @@ def extract_name_from_question(question):
         messages=[
             {"role": "system", "content": prompt.format(question)},
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         temperature=0.0
     )
     temp_str = response.choices[0].message.content.strip()
     name_list = ast.literal_eval(temp_str)
     return name_list
-def get_choice(final_prob, prompt):
+# 根据各选项的概率，调用模型选择最终答案（仅输出选项字母）
+def get_choice(final_prob: list[float], prompt: str) -> str:
+    """根据各选项概率输出最终选项字母
+    参数: final_prob(list[float]): 选项概率列表（按 A/B/C/... 顺序）
+         prompt(str): 问题文本
+    返回: str: 模型选择的选项字母
+    """
     final_answer = f"""You will read a question with choices and likelihood of each statement for choices in a probability formal. Based on these information, answer the question and only include the letter of choice in your answer. 
     Question: {prompt}
     
@@ -48,24 +69,30 @@ def get_choice(final_prob, prompt):
         messages=[
             {"role": "system", "content": final_answer.format(prompt)},
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         temperature=0.0
     )
     model_choice = response.choices[0].message.content.strip()[0]
     return model_choice
+
+# 主程序入口：遍历指定 episode，回答每个问题并统计准确率
 if __name__ == "__main__":
     correct = 0
     total = 0
     episode_list = [4005, 4009, 4017, 4018, 4023, 4034, 4037, 4041, 4043, 4054, 4057, 4059, 4063, 4070, 4077, 4078, 4081, 4083, 4098, 4103, 4105, 4106, 4124, 4145, 4150, 4162, 4172, 4184, 4190, 4198, 4200, 4284, 4324, 4327, 4331, 4338, 4343, 4367, 4369, 4370, 4372, 4374, 4385, 4416, 4419, 4423, 4429, 4439, 4441, 4449, 4452, 4453, 4469, 4473, 4482, 4485, 4487, 4488, 4490, 4499, 4505, 4506, 4510, 4512, 4520, 4525, 4540, 4542, 4546, 4552, 4556, 4559, 4567, 4568, 4594, 4604, 4606, 4618, 4623, 4641, 4656, 4658, 5010, 5017, 5039, 5042, 5068, 5080, 5084, 5091, 5095, 5099, 5103, 5105, 5121, 5138, 5154, 5165, 5173, 5175, 5197, 5302, 5379, 5381, 5509, 4047, 4101, 4102, 4113, 4117, 4123, 4133, 4140, 4160, 4173, 4176, 4178, 4280, 4285, 4312, 4328, 4332, 4365, 4415, 4458, 4463, 4526, 4527, 4529, 4551, 4560, 4576, 4584, 4621, 4667, 5014, 5049, 5082, 5093, 5098, 5123, 5126, 5127, 4455, 4375, 4164, 4224, 4329, 4575, 5163, 135, 138, 153, 193, 389, 532, 538, 577, 628, 630, 642, 647, 766, 848, 865, 895, 910, 956, 1811, 1856, 2559, 3050, 3058, 3068, 3315, 129, 152, 161, 225, 263, 397, 578, 583, 601, 609, 640, 644, 682, 784, 801, 824, 857, 913, 1131, 1817, 1819, 2462, 3077, 42, 128, 130, 144, 154, 223, 393, 404, 528, 541, 548, 549, 557, 634, 790, 871, 905, 1758, 1818, 2053, 2070, 3074, 3092, 3098, 3129, 3130, 3308]
-    episode_list = [4416]
-    with open("../Files/questions.json", "r") as file:
+    # 评测集：可根据需要替换为目标 episode 列表（此处仅示例 4416）
+    episode_list = [42]
+    # 读取基准问题与文本数据（相对路径 ../Files）
+    with open("../Files/yey_test/en/questions.json", "r") as file:
         question_data = json.load(file)
-    with open("../Files/texts.json", "r") as file:
+    with open("../Files/yey_test/en/texts.json", "r") as file:
         text_data = json.load(file)
+    # 遍历每个 episode，依次处理其所有问题
     for episode in tqdm(episode_list, "Answering questions"):
         try:
             print("Episode ", episode)
             questions = question_data[str(episode)]
+            # 遍历该 episode 的每个问题，逐题推理
             for question_id, prompt in questions["questions"].items():
                 print("Question ", question_id)
                 name_list = extract_name_from_question(questions["questions"]["1"])
@@ -93,6 +120,7 @@ if __name__ == "__main__":
                         info[main_person]["action"] = visual_action_extraction.get_action(episode)
                     else:
                         info[name_list[1]]["action"] = visual_action_extraction.get_action(episode)
+                # 抽取初始状态与潜在变量候选（信念/社交目标/对方物理目标）
                 init_state, latent_var_options = text_parsing.latent_variable_extraction(info, prompt)
                 prob_list = []
                 choices = list(latent_var_options.keys())

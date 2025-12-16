@@ -80,12 +80,17 @@ def trim_actions_after_putback(actions, communications):
     start_search = last_comm_index + 5
     trim_index = find_trim_index(actions[0], communications, start_search)
     return actions[:trim_index + 1], communications[:trim_index + 1]
+import os
+from dotenv import load_dotenv
+load_dotenv()
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 def generate(episode_id):
-    pickle_file_path = '/home/scai/Workspace/hshi33/virtualhome/data/dataset_language_large/language/logs_episode.{}_iter.0.pik'.format(episode_id-4000)
-    description_file_path = "/home/scai/Workspace_2/hshi33/benchmark/texts/full_version/episode_{}.txt".format(episode_id)
+    import os
+    pickle_file_path = os.path.join(os.getenv("LANGUAGE_LOGS_DIR", ""), f"logs_episode.{episode_id-4000}_iter.0.pik")
+    description_file_path = os.path.join(os.getenv("BENCHMARK_TEXTS_DIR", ""), f"episode_{episode_id}.txt")
     '''if os.path.exists(description_file_path):
         print("Description of episode {} has been generated".format(episode_id))
         return'''
@@ -97,7 +102,7 @@ def generate(episode_id):
         data = pickle.load(file)
     
     
-    json_file_path = '/home/scai/Workspace/hshi33/virtualhome/data/actions_pos.json'
+    json_file_path = os.getenv("ACTIONS_POS_JSON", "")
     with open(json_file_path, "r") as json_file:
         action_data = json.load(json_file)
     data["action"] = action_data[str(episode_id)]["action"]
@@ -106,7 +111,7 @@ def generate(episode_id):
     keys_to_remove = ['gt_goals','init_unity_graph','plan','goals_finished','belief','belief_room','belief_graph', 'graph','obs', "env_id", "task_name", "language_object"]
 
     remove_sections(data, keys_to_remove)
-    information_file_path = "/home/scai/Workspace_2/hshi33/benchmark/extracted_information/episode_{}.json".format(episode_id)
+    information_file_path = os.path.join(os.getenv("EXTRACTED_INFO_DIR", ""), f"episode_{episode_id}.json")
     with open(information_file_path, 'w') as json_file:
         json.dump(data, json_file, separators=(',', ':'))
 
@@ -124,7 +129,7 @@ def generate(episode_id):
         {"role": "assistant", "content": response_2},
         {"role": "user", "content": final_prompt},
     ],
-    model="gpt-4o",
+    model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
     temperature=0.1
     )
 

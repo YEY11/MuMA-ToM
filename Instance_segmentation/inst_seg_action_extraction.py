@@ -11,10 +11,12 @@ import random
 
 from env_utils import ALL_LIST, ROOM_LIST, CONTAINER_LIST, SURFACE_LIST, OBJECT_LIST, ROOM_COMPONENTS, ROOM_POSSIBILITY
 
-base_dir = "path for visual data"
-parent_path = "path for video frames"
-api_key = ''  # Enter your API Key when you want to use this script
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
+base_dir = os.getenv("VISUAL_DATA_DIR", "")
+parent_path = os.getenv("VIDEO_FRAMES_DIR", "")
+api_key = os.getenv("LLM_API_KEY", "")  # Loaded from environment
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
@@ -370,19 +372,21 @@ def predict_action_by_character(data=None, encoded_images=None, episode=0, utter
                 ]
             })
 
+    base_url = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"
     }
 
     payload = {
-        "model": "gpt-4o",
+        "model": model_name,
         "messages": messages,
         "max_tokens": 2000,
         "temperature": 0.0
     }
 
-    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload)
     
     if response.status_code == 200:
         #print(response.json().get('choices')[0].get('message').get('content'))

@@ -35,10 +35,12 @@ if __name__ == '__main__':
     args = get_args()
 
     num_tries = 1
-    args.executable_file = '/home/scai/Workspace/hshi33/virtualhome/online_watch_and_help/path_sim_dev/linux_exec.v2.3.0.x86_64'
+    from dotenv import load_dotenv
+    load_dotenv()
+    args.executable_file = os.getenv("VIRTUALHOME_EXEC_FILE", "")
     args.max_episode_length = 100
     args.num_per_apartment = 20
-    args.dataset_path = '/home/scai/Workspace/hshi33/virtualhome/online_watch_and_help/dataset/new_datasets/dataset_language_large.pik'
+    args.dataset_path = os.getenv("LANGUAGE_DATASET_PIK", "")
 
     agent_types = [
             ['full', 0, 0.05, False, 0, 0.5],
@@ -79,8 +81,8 @@ if __name__ == '__main__':
                 node['obj_transform']['position'][1] += 0.1
 
     args.record_dir = '../data/{}/{}'.format(datafile, "language")
-    args.record_dir = "/home/scai/Workspace_2/hshi33/training_set/raw_log/"
-    error_dir = "/home/scai/Workspace_2/hshi33/training_set/"
+    args.record_dir = os.getenv("TRAINING_SET_RAW_LOG_DIR", "")
+    error_dir = os.getenv("TRAINING_SET_DIR", "")
     if not os.path.exists(args.record_dir):
         os.makedirs(args.record_dir)
 
@@ -108,7 +110,7 @@ if __name__ == '__main__':
             if goal.split("_")[1] == "toy":
                 env_task_set[episode_id]["task_goal"][1][goal] = 2
             if goal.split("_")[1] in temp.keys() and not goal.split("_")[2] == temp[goal.split("_")[1]]:
-                if not Path("/home/scai/Workspace/hshi33/virtualhome/data/full_dataset/1500+episodes/logs_episode.{}_iter.0.pik".format(episode_id)).is_file():
+                if not Path(os.path.join(os.getenv("FULL_DATASET_1500_DIR", ""), "logs_episode.{}_iter.0.pik".format(episode_id))).is_file():
                     new_episode_ids.append(episode_id)
                     break'''
 

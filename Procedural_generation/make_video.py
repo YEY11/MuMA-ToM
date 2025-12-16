@@ -14,8 +14,10 @@ from render_new import get_chars
 import pickle
 import argparse
 import random
-os.environ["MAGICK_CONFIGURE_PATH"] = "/home/scai/Workspace/hshi33/virtualhome/data"
-directory = "/home/scai/Workspace_2/hshi33/video_color"
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["MAGICK_CONFIGURE_PATH"] = os.getenv("MAGICK_CONFIGURE_PATH", "")
+directory = os.getenv("VIDEO_COLOR_DIR", "")
 parser = argparse.ArgumentParser(description="Collection data simulator.")
 parser.add_argument("--id", type=int, default=0)
 args = parser.parse_args()

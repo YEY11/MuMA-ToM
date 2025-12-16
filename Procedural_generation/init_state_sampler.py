@@ -45,10 +45,12 @@ parser.add_argument(
 parser.add_argument(
     "--use-editor", action="store_true", default=False, help="Use unity editor"
 )
+from dotenv import load_dotenv
+load_dotenv()
 parser.add_argument(
     "--exec_file",
     type=str,
-    default="/home/scai/Workspace/hshi33/virtualhome/online_watch_and_help/path_sim_dev/linux_exec.v2.3.0.x86_64",
+    default=os.getenv("VIRTUALHOME_EXEC_FILE", ""),
     help="Use unity editor",
 )
 

@@ -7,8 +7,12 @@ import copy
 from openai import OpenAI
 from tqdm import tqdm
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 instruction_prompt = """
 Objective: Create a description of a two-agent interaction scenario based on the provided language template.
@@ -63,7 +67,9 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, f"{curr_dir}/../../online_watch_and_help/")
 from agents import language
 sys.path.insert(0, f"{curr_dir}/")
-directory = "/home/scai/Workspace_2/hshi33/benchmark/texts/full_version"
+from dotenv import load_dotenv
+load_dotenv()
+directory = os.getenv("BENCHMARK_TEXTS_DIR", "")
 def remove_sections(data, keys_to_remove):
     for key in keys_to_remove:
         if key in data:
@@ -72,10 +78,10 @@ def main(episode_id):
     '''if os.path.exists(os.path.join(directory, "episode_{}.txt".format(episode_id))):
         print("Description of episode {} have been generated".format(episode_id))
         return'''
-    pickle_file_path = '/home/scai/Workspace/hshi33/virtualhome/data/full_dataset/nolang_episodes/logs_episode.{}_iter.0.pik'.format(episode_id)
+    pickle_file_path = os.path.join(os.getenv("NOLANG_EPISODES_DIR", ""), f"logs_episode.{episode_id}_iter.0.pik")
     with open(pickle_file_path, 'rb') as file:
         data = pickle.load(file)
-    json_file_path = '/home/scai/Workspace/hshi33/virtualhome/data/actions_pos.json'
+    json_file_path = os.getenv("ACTIONS_POS_JSON", "")
     with open(json_file_path, "r") as json_file:
         action_data = json.load(json_file)
     data["action"] = action_data[str(episode_id)]["action"]
@@ -87,7 +93,7 @@ def main(episode_id):
             break
     keys_to_remove = ['gt_goals','init_unity_graph','plan','goals_finished','belief','belief_room','belief_graph', 'graph','obs', "env_id", "task_name", "language_object", "fail_to_execute"]
     remove_sections(data, keys_to_remove)
-    information_file_path = f'/home/scai/Workspace_2/hshi33/benchmark/extracted_information/episode_{episode_id}.json'
+    information_file_path = os.path.join(os.getenv("EXTRACTED_INFO_DIR", ""), f"episode_{episode_id}.json")
     with open(information_file_path, 'w') as json_file:
         json.dump(data, json_file, separators=(',', ':'))
     with open(information_file_path, 'r') as json_file:
@@ -105,7 +111,7 @@ def main(episode_id):
         {"role": "assistant", "content": response_2},
         {"role": "user", "content": final_prompt}
     ],
-    model="gpt-4o",
+    model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
     temperature=1.0
     )
 

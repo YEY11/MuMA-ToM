@@ -4,8 +4,11 @@ import re
 import random
 from openai import OpenAI
 from tqdm import tqdm
+from dotenv import load_dotenv
+load_dotenv()
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 instruction = """
 Objective: Generate 3 likely and 2 unlikely choices from the language template by filling in the blank. Remember the male and female name in the episode.
@@ -141,7 +144,8 @@ def parse_gpt_response(text, description, episode_num):
         "4": "3.2",
     }
 
-    with open("/home/scai/Workspace_2/hshi33/benchmark/texts/multimodal/episode_{}.txt".format(episode_num), "w") as file:
+    multimodal_dir = os.getenv("BENCHMARK_MULTIMODAL_TEXTS_DIR", "")
+    with open(os.path.join(multimodal_dir, f"episode_{episode_num}.txt"), "w") as file:
         file.write(filtered_description)
 
     return {
@@ -156,8 +160,8 @@ def parse_gpt_response(text, description, episode_num):
 
 def main(episode_id):
     
-    input_file_path = '/home/scai/Workspace_2/hshi33/benchmark/texts/full_version/episode_{}.txt'.format(episode_id)
-    question_file_path = "/home/scai/Workspace_2/hshi33/benchmark/questions/episode_{}.json".format(episode_id)
+    input_file_path = os.path.join(os.getenv("BENCHMARK_TEXTS_DIR", ""), f"episode_{episode_id}.txt")
+    question_file_path = os.path.join(os.getenv("BENCHMARK_QUESTIONS_DIR", ""), f"episode_{episode_id}.json")
     '''if os.path.exists(question_file_path):
         print("Question of episode {} has been generated".format(episode_id))
         return'''
@@ -179,7 +183,7 @@ def main(episode_id):
             {"role": "assistant", "content": example_response_2},
             {"role": "user", "content": data}
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         temperature=0.1
         )
     gpt_output = response.choices[0].message.content.strip()

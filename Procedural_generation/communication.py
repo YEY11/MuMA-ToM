@@ -13,8 +13,12 @@ import copy
 from termcolor import colored
 from openai import OpenAI
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 
 class Language():
@@ -281,7 +285,7 @@ class LanguageInquiry(Language):
                 {"role": "assistant", "content": "Have you come across a spoon and a plate by any chance?"},
                 {"role": "user", "content": question}
             ],
-            model="gpt-4o",
+            model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
             temperature=0.5
         )
         return response.choices[0].message.content.strip()

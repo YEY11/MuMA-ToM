@@ -3,8 +3,11 @@ import json
 import re
 from openai import OpenAI
 from tqdm import tqdm
+from dotenv import load_dotenv
+load_dotenv()
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 
 template_question_1_1_most = """
@@ -140,8 +143,11 @@ def generate(episode_id):
     Expected output: Questions following this templated format, filling in the blanks, denoted by [] where necessary.
 
     """
-    input_file_path = '/home/scai/Workspace_2/hshi33/benchmark/texts/full_version/episode_{}.txt'.format(episode_id)
-    question_file_path = "/home/scai/Workspace_2/hshi33/benchmark/questions/episode_{}.json".format(episode_id)
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    input_file_path = os.path.join(os.getenv("BENCHMARK_TEXTS_DIR", ""), f"episode_{episode_id}.txt")
+    question_file_path = os.path.join(os.getenv("BENCHMARK_QUESTIONS_DIR", ""), f"episode_{episode_id}.json")
     '''if os.path.exists(question_file_path):
         print("Question of episode {} has been generated".format(episode_id))
         return'''
@@ -157,7 +163,10 @@ def generate(episode_id):
 
 
 
-    input_template_list_path = '/home/scai/Workspace/hshi33/virtualhome/data/dataset_language_large/language/question_types.json'
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    input_template_list_path = os.getenv("QUESTION_TYPES_JSON", "")
     episode_key = 'logs_episode.{}_iter.0.pik'.format(episode_id-4000)
     
     with open(input_template_list_path, 'rb') as file:
@@ -198,7 +207,7 @@ def generate(episode_id):
             {"role": "assistant", "content": example_response},
             {"role": "user", "content": data}
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         temperature=0.1
         )
     gpt_output = response.choices[0].message.content.strip()

@@ -2,10 +2,22 @@ from openai import OpenAI
 import json
 import ast
 import re
+import os
+from typing import List
+from dotenv import load_dotenv
+load_dotenv()
+# LIMP 视觉动作摘要模块：从 Files/actions_extracted.json 和文本生成规整的动作序列
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
-def get_action(episode_id):
+def get_action(episode_id: int) -> List[str]:
+    """读取指定 episode 的原始动作与文本，抽取并规整为动作列表
+    参数:
+        episode_id (int): 目标 episode 标识
+    返回:
+        List[str]: 规整后的动作序列
+    """
     with open("../Files/actions_extracted.json", "r") as file:
         data = json.load(file)
     with open("../Files/texts.json", "r") as file:
@@ -22,7 +34,7 @@ def get_action(episode_id):
             messages=[
                 {"role": "system", "content": prompt.format(data[str(episode_id)]["action"], text, name)},
             ],
-            model="gpt-4o",
+            model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
             logprobs=True,
             top_logprobs=5,
             temperature=0.0
@@ -37,7 +49,7 @@ def get_action(episode_id):
             messages=[
                 {"role": "system", "content": prompt.format(data[str(episode_id)]["action"], text, name)},
             ],
-            model="gpt-4o",
+            model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
             logprobs=True,
             top_logprobs=5,
             temperature=0.0
@@ -54,13 +66,13 @@ def get_action(episode_id):
     Formulate your final answer in the following form.
     Actions:
     ["action1", "action2", ....]
-    """
+    """  # 规整动作的提示词：仅保留关键动作类型并统一格式
     print(prompt.format(data[str(episode_id)]["action"], text, name))
     response = client.chat.completions.create(
         messages=[
             {"role": "system", "content": prompt.format(data[str(episode_id)]["action"], text, name)},
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         logprobs=True,
         top_logprobs=5,
         temperature=0.0

@@ -4,8 +4,13 @@ import json
 import re
 import ipdb
 import ast
+from typing import Dict, List, Optional, Tuple
+from dotenv import load_dotenv
+load_dotenv()
+# LIMP 文本解析模块：抽取人物的动作与话语，生成 ToM 潜变量候选
 client = OpenAI(
-    api_key=''
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
 )
 
 latent_variable_prompt = """
@@ -14,6 +19,7 @@ latent_variable_prompt = """
     Question: {}
 """
 
+# 从动作序列反推出“初始环境状态”的提示：仅提取环境状态，不包含其他信息
 init_state_prompt = """
     You will read one or two person's actions in a list like form. From the actions taken, extract the initial state of the environment before any people act. 
     Check each grab action or synonyms. Describe it in the form "There is a [object grabbed] [on/inside location of grabbing].
@@ -23,7 +29,14 @@ init_state_prompt = """
 """
 
 
-def parse_text_info(text, name): #parse any kind of action and utterance text
+def parse_text_info(text: str, name: str) -> Dict[str, Optional[List[str]]]:
+    """解析指定人物在文本中的 Actions/Utterance，返回列表字典
+    参数:
+        text (str): 叙述文本
+        name (str): 目标人物姓名
+    返回:
+        dict: {"action": list[str] | None, "utterance": list[str] | None}
+    """
     info_extraction_prompt = """
         You will read a piece of text describing actions of some number of people with distinctive names. You will also have a name, which is the name of the person whom you should pay attention to. Summarize the person's actions and utterance separately in a chronological order. Only include the actions and utterance directly taken by the person in the text, and exclude any previous actions mentioned indirectly. If you cannot find either utterance or actions of the person in the text, leave the corresponding section blank. When reading words like "it", replace it with inferred object or location to make actions clearer. Do not include agent's communication as part of it. Organize your answer in this form:
         Actions:
@@ -42,7 +55,7 @@ def parse_text_info(text, name): #parse any kind of action and utterance text
         messages=[
             {"role": "system", "content": info_extraction_prompt.format(text, name)},
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         temperature=0.0
     )
     info = response.choices[0].message.content.strip()
@@ -60,7 +73,14 @@ def parse_text_info(text, name): #parse any kind of action and utterance text
         utterance_list = None
     return {"action": action_list, "utterance": utterance_list}
 
-def latent_variable_extraction(info, question):
+def latent_variable_extraction(info: Dict[str, Dict[str, Optional[List[str]]]], question: str) -> Tuple[str, Dict[str, Optional[str]]]:
+    """根据解析出的动作，先抽取初始环境状态，再为每个选项生成 ToM 潜变量三元组
+    参数:
+        info (dict): name -> {action, utterance}
+        question (str): 问题文本
+    返回:
+        Tuple[str, Dict[str, Optional[str]]]: (init_state(str), choices(dict))，choices 包含 A/B/C 的三元组字符串
+    """
     action_str = ""
     print(info)
     for name in info.keys():
@@ -72,7 +92,7 @@ def latent_variable_extraction(info, question):
         messages=[
             {"role": "system", "content": init_state_prompt.format(action_str)},
         ],
-        model="gpt-4o",
+        model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
         temperature=0.0
     )
     init_state = response.choices[0].message.content.strip()
