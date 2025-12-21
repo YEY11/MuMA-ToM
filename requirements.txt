@@ -6,3 +6,4 @@ tqdm>=4.66.0
 ipdb>=0.13.13
 loguru>=0.7.0
 pillow>=9.5.0
+eval7>=0.1.10

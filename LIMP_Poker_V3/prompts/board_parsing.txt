@@ -1,0 +1,18 @@
+Analyze this poker game frame. Extract strict JSON:
+
+1. "phase": Pre-flop/Flop/Turn/River/Showdown/Unknown
+2. "pot": Total pot value (number). If unsure, output null.
+3. "board": List of community cards ["Ah", "Kd", "7c"] etc. Empty list if pre-flop.
+4. "players": List of visible players. For EACH player:
+   - "name": Name or identifier visible on screen
+   - "stack": Current stack size (number). If unreadable, output null.
+   - "position": "SB" or "BB" (look for Dealer button)
+   - "is_active": Boolean (has not folded, still in hand)
+   - "behavioral_cues":
+     - "posture": "Leaning forward" / "Leaning back" / "Neutral"
+     - "hands": "Playing with chips" / "Touching face" / "Hidden" / "Folded" / "On table"
+     - "gaze": "Staring at opponent" / "Looking at board" / "Looking down" / "Looking away"
+     - "occlusion": "Sunglasses" / "Hat" / "Mask" / "None"
+     - "facial_emotion": "Neutral" / "Tense" / "Confident" / "Uncertain"
+
+Output ONLY the JSON object, no markdown formatting.
