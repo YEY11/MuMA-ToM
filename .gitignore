@@ -83,6 +83,7 @@ temp/
 .vscode/
 *.swp
 .DS_Store
+.ruff_cache/
 
 # ==========================
 # 8. 其他临时文件
