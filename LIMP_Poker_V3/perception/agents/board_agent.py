@@ -4,23 +4,22 @@ Uses VLM to extract structured game state from poker frames
 """
 
 import os
-import json
-import base64
-from typing import Dict, Any, Optional
-from openai import OpenAI
+from typing import Any, Dict
+
 from loguru import logger
 
 from LIMP_Poker_V3.config import config
 from LIMP_Poker_V3.core.registry import AgentRegistry
 from LIMP_Poker_V3.core.schema import (
-    GameState,
-    PlayerState,
     BehavioralCues,
-    PhaseType,
     FacialEmotionType,
+    GameState,
+    PhaseType,
+    PlayerState,
 )
-from .base import BasePerceptionAgent
+from LIMP_Poker_V3.models import VLMClient
 
+from .base import BasePerceptionAgent
 
 # Default prompt for board parsing
 DEFAULT_PROMPT = """Analyze this poker game frame. Extract strict JSON:
@@ -52,11 +51,7 @@ class BoardAgent(BasePerceptionAgent):
 
     def __init__(self):
         super().__init__()
-        self.client = OpenAI(
-            api_key=config.LLM_API_KEY,
-            base_url=config.LLM_BASE_URL,
-        )
-        self.model = config.LLM_MODEL_NAME
+        self.vlm = VLMClient()
         self._load_prompt()
 
     def _load_prompt(self):
@@ -67,19 +62,11 @@ class BoardAgent(BasePerceptionAgent):
                 self.prompt = f.read()
         else:
             self.prompt = DEFAULT_PROMPT
-            # Save default prompt for future customization
             os.makedirs(config.PROMPTS_DIR, exist_ok=True)
             with open(prompt_path, "w") as f:
                 f.write(DEFAULT_PROMPT)
 
-    def _encode_image(self, image_path: str) -> str:
-        """Encode image to base64"""
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
-
-    def process(
-        self, image_path: str, timestamp: float, **kwargs
-    ) -> Dict[str, Any]:
+    def process(self, image_path: str, timestamp: float, **kwargs) -> Dict[str, Any]:
         """
         Process a single frame and extract game state.
 
@@ -91,30 +78,13 @@ class BoardAgent(BasePerceptionAgent):
             Dict containing raw extracted data
         """
         try:
-            base64_image = self._encode_image(image_path)
-
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": self.prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                },
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=800,
+            # Don't set max_tokens - let model complete JSON naturally to avoid truncation
+            data = self.vlm.analyze_image(
+                image_path=image_path,
+                prompt=self.prompt,
                 temperature=0.0,
-                response_format={"type": "json_object"},
+                json_response=True,
             )
-
-            data = json.loads(response.choices[0].message.content)
             data["timestamp"] = timestamp
             data["_source"] = "vlm"
             return data
@@ -145,7 +115,8 @@ class BoardAgent(BasePerceptionAgent):
             GameState object
         """
         players = []
-        for p in raw_data.get("players", []):
+        players_data = raw_data.get("players") or []
+        for p in players_data:
             # Parse stack (handle string formats like "123k")
             stack_val = p.get("stack")
             if isinstance(stack_val, str):
@@ -160,7 +131,7 @@ class BoardAgent(BasePerceptionAgent):
                     stack_val = None
 
             # Parse behavioral cues
-            cues_data = p.get("behavioral_cues", {})
+            cues_data = p.get("behavioral_cues") or {}
             facial_emotion = cues_data.get("facial_emotion")
             if facial_emotion and config.USE_FACIAL_EMOTION:
                 try:
@@ -178,28 +149,38 @@ class BoardAgent(BasePerceptionAgent):
                 facial_emotion=facial_emotion,
             )
 
+            # Handle null values with explicit fallbacks
+            player_name = p.get("name") or "Unknown"
+            is_active = p.get("is_active")
+            if is_active is None:
+                is_active = True
+
             players.append(
                 PlayerState(
-                    name=p.get("name", "Unknown"),
+                    name=player_name,
                     stack=stack_val,
                     position=p.get("position"),
-                    is_active=p.get("is_active", True),
+                    is_active=is_active,
                     behavioral_cues=behavioral_cues,
                 )
             )
 
         # Parse phase
-        phase_str = raw_data.get("phase", "Unknown")
-        try:
-            phase = PhaseType(phase_str)
-        except ValueError:
+        frame_type = raw_data.get("frame_type", "standard")
+        if frame_type == "transition":
             phase = PhaseType.UNKNOWN
+            logger.debug(f"Transition frame detected at {timestamp}s")
+        else:
+            phase_str = raw_data.get("phase", "Unknown")
+            try:
+                phase = PhaseType(phase_str)
+            except ValueError:
+                phase = PhaseType.UNKNOWN
 
         return GameState(
             timestamp=timestamp,
             phase=phase,
-            board=raw_data.get("board", []),
+            board=raw_data.get("board", []) or [],
             pot=raw_data.get("pot"),
             players=players,
         )
-

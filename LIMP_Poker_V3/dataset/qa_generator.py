@@ -216,11 +216,35 @@ class QAGenerator:
             for a in phase_data.actions
         ]
 
+        # Aggregate behavioral cues from all actions in this phase
+        aggregated_cues = {}
+        total_decision_time = 0.0
+
+        for action in phase_data.actions:
+            # Aggregate behavioral summary per player
+            if action.behavioral_summary:
+                player_name = action.player_name
+                if player_name not in aggregated_cues:
+                    aggregated_cues[player_name] = action.behavioral_summary
+                else:
+                    # Merge behavioral data (keep the latest or most significant)
+                    existing = aggregated_cues[player_name]
+                    # Update with new data, preserving existing if new is None
+                    for key, value in action.behavioral_summary.items():
+                        if value is not None:
+                            existing[key] = value
+
+            # Sum up decision times
+            if action.duration:
+                total_decision_time += action.duration
+
         return QAContext(
             phase=phase_data.phase,
             board=board,
             pot=pot,
             action_sequence=action_sequence,
+            behavioral_cues=aggregated_cues if aggregated_cues else None,
+            decision_time=total_decision_time if total_decision_time > 0 else None,
         )
 
     def _get_phase_players(self, phase_data: PhaseData) -> List[str]:
@@ -370,8 +394,10 @@ class QAGenerator:
 
         options = template["options"]
 
-        # Default answer (would be determined by GT or heuristics)
-        answer = random.choice(["A", "B", "C"])
+        # Infer answer based on action patterns (rule-based)
+        answer = self._infer_strategy_from_actions(player_actions)
+        answer_source = "rule_based"
+
         for opt in options:
             opt.is_correct = opt.key == answer
 
@@ -385,8 +411,53 @@ class QAGenerator:
             question=template["question"],
             options=options,
             answer=answer,
-            answer_source="rule_based",
+            answer_source=answer_source,
         )
+
+    def _infer_strategy_from_actions(
+        self,
+        actions: List[ActionEvent],
+    ) -> str:
+        """
+        Infer strategy type based on action patterns.
+        
+        Returns:
+            A/B/C corresponding to Aggressive/Conservative/Deceptive
+        """
+        if not actions:
+            return "B"  # Default to conservative
+        
+        # Count action types
+        raises = sum(1 for a in actions if a.action_type == ActionType.RAISE)
+        bets = sum(1 for a in actions if a.action_type == ActionType.BET)
+        calls = sum(1 for a in actions if a.action_type == ActionType.CALL)
+        checks = sum(1 for a in actions if a.action_type == ActionType.CHECK)
+        folds = sum(1 for a in actions if a.action_type == ActionType.FOLD)
+        
+        total_aggressive = raises + bets
+        total_passive = calls + checks
+        
+        # Check behavioral cues for deception hints
+        has_deception_hints = False
+        for action in actions:
+            if action.behavioral_summary:
+                summary = action.behavioral_summary
+                # Fidgeting, posture change, or emotion change might indicate deception
+                if summary.get("fidgeting_detected") or summary.get("posture_changed"):
+                    has_deception_hints = True
+                    break
+        
+        # Infer strategy
+        if total_aggressive > total_passive:
+            return "A"  # Aggressive
+        elif has_deception_hints and total_aggressive > 0:
+            return "C"  # Deceptive (showing aggression with nervous tells)
+        elif folds > 0:
+            return "B"  # Conservative (folded)
+        elif total_passive > total_aggressive:
+            return "B"  # Conservative (mostly calling/checking)
+        else:
+            return "C"  # Deceptive (balanced or unclear)
 
     def _create_advantage_question(
         self,
@@ -408,8 +479,9 @@ class QAGenerator:
 
         options = template["options"]
 
-        # Default answer
-        answer = random.choice(["A", "B", "C"])
+        # Infer answer based on available information
+        answer = self._infer_advantage(players, phase_data)
+        
         for opt in options:
             opt.is_correct = opt.key == answer
 
@@ -425,6 +497,59 @@ class QAGenerator:
             answer=answer,
             answer_source="rule_based",
         )
+
+    def _infer_advantage(
+        self,
+        players: List[str],
+        phase_data: PhaseData,
+    ) -> str:
+        """
+        Infer which player has advantage based on action patterns and aggression.
+        
+        Returns:
+            A = player_a advantage
+            B = player_b advantage  
+            C = unclear/even
+        """
+        if len(players) < 2:
+            return "C"
+        
+        player_a, player_b = players[0], players[1]
+        
+        # Count aggressive actions per player
+        a_aggression = 0
+        b_aggression = 0
+        
+        for action in phase_data.actions:
+            is_aggressive = action.action_type in [ActionType.RAISE, ActionType.BET]
+            if action.player_name == player_a and is_aggressive:
+                a_aggression += 1
+            elif action.player_name == player_b and is_aggressive:
+                b_aggression += 1
+        
+        # Check stack sizes if available
+        a_stack = None
+        b_stack = None
+        if phase_data.final_state:
+            for p in phase_data.final_state.players:
+                if p.name == player_a:
+                    a_stack = p.stack
+                elif p.name == player_b:
+                    b_stack = p.stack
+        
+        # Determine advantage
+        if a_aggression > b_aggression:
+            return "A"  # Player A more aggressive = likely has advantage
+        elif b_aggression > a_aggression:
+            return "B"  # Player B more aggressive
+        elif a_stack and b_stack:
+            # If same aggression, check stack sizes
+            if a_stack > b_stack * 1.2:
+                return "A"
+            elif b_stack > a_stack * 1.2:
+                return "B"
+        
+        return "C"  # Unclear
 
     def save(self, dataset: QADataset, output_path: str):
         """Save QA dataset to file."""

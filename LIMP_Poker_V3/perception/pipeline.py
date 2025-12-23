@@ -173,6 +173,112 @@ class PerceptionPipeline:
 
         return raw_states
 
+    # Phase order for validation (phases can only progress forward)
+    PHASE_ORDER = {
+        PhaseType.PRE_FLOP: 0,
+        PhaseType.FLOP: 1,
+        PhaseType.TURN: 2,
+        PhaseType.RIVER: 3,
+        PhaseType.SHOWDOWN: 4,
+        PhaseType.UNKNOWN: -1,
+    }
+
+    def _stabilize_phases(
+        self, states: List[GameState], min_consecutive: int = 3
+    ) -> List[GameState]:
+        """
+        Stabilize phase detection by applying debouncing logic.
+
+        Rules:
+        1. Phases can only progress forward ONE step at a time:
+           Pre-flop → Flop → Turn → River → Showdown
+        2. Unknown/transition frames inherit previous valid phase
+        3. Require min_consecutive frames to confirm phase change
+        4. Reject phase jumps (e.g., Flop → River skips Turn)
+
+        Args:
+            states: Raw game states from VLM
+            min_consecutive: Minimum consecutive frames needed to confirm phase change
+
+        Returns:
+            States with stabilized phases
+        """
+        if not states:
+            return states
+
+        # Find first valid (non-Unknown) phase
+        current_phase = PhaseType.PRE_FLOP
+        for state in states:
+            if state.phase != PhaseType.UNKNOWN:
+                current_phase = state.phase
+                break
+
+        stabilized = []
+        pending_phase = None
+        pending_count = 0
+
+        for state in states:
+            detected_phase = state.phase
+
+            # Skip Unknown phases - inherit current phase
+            if detected_phase == PhaseType.UNKNOWN:
+                state.phase = current_phase
+                stabilized.append(state)
+                continue
+
+            # Check if this is a valid forward transition
+            detected_order = self.PHASE_ORDER.get(detected_phase, -1)
+            current_order = self.PHASE_ORDER.get(current_phase, -1)
+            order_diff = detected_order - current_order
+
+            if order_diff == 1:
+                # Valid single-step forward transition (e.g., Flop → Turn)
+                if pending_phase == detected_phase:
+                    pending_count += 1
+                else:
+                    pending_phase = detected_phase
+                    pending_count = 1
+
+                # Confirm transition after min_consecutive frames
+                if pending_count >= min_consecutive:
+                    logger.debug(
+                        f"Phase transition confirmed: {current_phase} → {detected_phase} "
+                        f"at {state.timestamp}s"
+                    )
+                    current_phase = detected_phase
+                    pending_phase = None
+                    pending_count = 0
+
+            elif order_diff > 1:
+                # Invalid jump transition (e.g., Flop → River skips Turn) - ignore
+                logger.debug(
+                    f"Ignoring phase jump: {current_phase} → {detected_phase} "
+                    f"at {state.timestamp}s (skips {order_diff - 1} phase(s))"
+                )
+                pending_phase = None
+                pending_count = 0
+
+            elif order_diff < 0:
+                # Invalid backward transition - ignore and use current phase
+                logger.debug(
+                    f"Ignoring backward transition: {current_phase} → {detected_phase} "
+                    f"at {state.timestamp}s"
+                )
+                pending_phase = None
+                pending_count = 0
+
+            else:
+                # Same phase - reset pending
+                pending_phase = None
+                pending_count = 0
+
+            # Apply stabilized phase
+            state.phase = current_phase
+            stabilized.append(state)
+
+        logger.info(f"Phase stabilization complete: {len(stabilized)} states processed")
+        return stabilized
+
     def _build_timeline(self, states: List[GameState]) -> List[PhaseData]:
         """
         Build timeline by segmenting phases and detecting actions.
@@ -185,6 +291,9 @@ class PerceptionPipeline:
         """
         if not states:
             return []
+
+        # Apply phase stabilization
+        states = self._stabilize_phases(states)
 
         timeline = []
         current_phase_states = []
@@ -219,6 +328,7 @@ class PerceptionPipeline:
             )
             timeline.append(phase_data)
 
+        logger.info(f"Timeline built with {len(timeline)} phases")
         return timeline
 
     def _create_phase_data(

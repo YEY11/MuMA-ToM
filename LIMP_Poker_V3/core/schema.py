@@ -179,7 +179,8 @@ class QAContext(BaseModel):
     action: Optional[Dict[str, Any]] = None
     action_sequence: Optional[List[Dict[str, Any]]] = None
     visible_cards: Optional[Dict[str, List[str]]] = None  # For audience protocol
-    behavioral_cues: Optional[Dict[str, BehavioralCues]] = None
+    # behavioral_cues can be either BehavioralCues or behavioral_summary dict
+    behavioral_cues: Optional[Dict[str, Any]] = None
     decision_time: Optional[float] = None
 
 

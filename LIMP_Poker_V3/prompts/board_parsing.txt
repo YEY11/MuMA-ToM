@@ -1,18 +1,94 @@
-Analyze this poker game frame. Extract strict JSON:
+You are analyzing a Texas Hold'em poker broadcast frame. Extract game state as JSON.
 
-1. "phase": Pre-flop/Flop/Turn/River/Showdown/Unknown
-2. "pot": Total pot value (number). If unsure, output null.
-3. "board": List of community cards ["Ah", "Kd", "7c"] etc. Empty list if pre-flop.
-4. "players": List of visible players. For EACH player:
-   - "name": Name or identifier visible on screen
-   - "stack": Current stack size (number). If unreadable, output null.
-   - "position": "SB" or "BB" (look for Dealer button)
-   - "is_active": Boolean (has not folded, still in hand)
-   - "behavioral_cues":
-     - "posture": "Leaning forward" / "Leaning back" / "Neutral"
-     - "hands": "Playing with chips" / "Touching face" / "Hidden" / "Folded" / "On table"
-     - "gaze": "Staring at opponent" / "Looking at board" / "Looking down" / "Looking away"
-     - "occlusion": "Sunglasses" / "Hat" / "Mask" / "None"
-     - "facial_emotion": "Neutral" / "Tense" / "Confident" / "Uncertain"
+## IMPORTANT: Frame Type Detection
 
-Output ONLY the JSON object, no markdown formatting.
+First, determine the frame type:
+1. **Standard Game Frame**: Has the player info UI bar at the bottom (showing player names, cards, stacks, action labels)
+2. **Transition Frame**: Shows only logos, advertisements, presenter closeups, or card dealing closeups WITHOUT the standard UI bar
+3. **Card Closeup Frame**: Shows real cards on the table in closeup (may appear during phase transitions)
+
+If this is a TRANSITION or NON-STANDARD frame (no player UI bar visible):
+- Set "frame_type": "transition"
+- Set "phase": "Unknown"
+- Set all other fields to null
+- Do NOT guess the phase!
+
+## Phase Detection Rules (for Standard Game Frames)
+
+**STEP 1: Count the ACTUAL CARD images** in the community card area (center of screen).
+Only count REAL cards with visible rank/suit. Do NOT count:
+- HSD Logo placeholders (red cards with HSD logo)
+- Empty card slots
+- Face-down cards
+
+**STEP 2: Determine phase based on card count:**
+| Card Count | Phase |
+|------------|-------|
+| 0 | Pre-flop |
+| 3 | Flop |
+| 4 | Turn |
+| 5 | River |
+| 5 + showdown indicators | Showdown |
+
+**STEP 3: Verify consistency:**
+- `community_cards_count` MUST match `phase`
+- If count is 4, phase MUST be "Turn" (not River!)
+- If count is 3, phase MUST be "Flop" (not Turn!)
+
+CRITICAL RULES:
+1. Count cards CAREFULLY - the difference between 3, 4, and 5 cards determines the phase
+2. If you cannot clearly count cards, set phase to "Unknown"
+3. Showdown requires EXPLICIT indicators (winner announced, pot awarded)
+
+## Action Detection
+
+Look for action labels near player names:
+- Common actions: "FOLD", "CHECK", "CALL X", "BET X", "RAISE TO X", "ALL-IN", "3-BET TO X"
+- Extract the action text and amount if visible
+
+## Position Detection (Heads-Up / 2-Player)
+
+This is a heads-up (2-player) Texas Hold'em game. Position rules:
+- **SB (Small Blind)**: The player with the "D" (Dealer button) marker near their name. In heads-up, the dealer is also the small blind.
+- **BB (Big Blind)**: The player WITHOUT the "D" marker.
+
+Look for the "D" symbol in a circle near one player's info panel to identify the dealer/SB.
+
+## JSON Output Format
+
+```json
+{
+  "frame_type": "standard" | "transition",
+  "phase": "Pre-flop" | "Flop" | "Turn" | "River" | "Showdown" | "Unknown",
+  "community_cards_count": <number 0-5 or null>,
+  "pot": <number or null>,
+  "board": ["card1", "card2", ...],
+  "players": [
+    {
+      "name": "<player name>",
+      "stack": <number or null>,
+      "position": "SB" | "BB" | "Unknown",
+      "hole_cards": ["card1", "card2"] | null,
+      "current_action": "<action text>" | null,
+      "action_amount": <number or null>,
+      "is_active": true | false,
+      "win_probability": <percentage if shown, else null>,
+      "behavioral_cues": {
+        "posture": "Leaning forward" | "Leaning back" | "Upright" | "Neutral",
+        "hands": "Playing with chips" | "Touching face" | "Covering mouth" | "Folded arms" | "On table" | "Hidden",
+        "gaze": "Staring at opponent" | "Looking at board" | "Looking at own cards" | "Looking down" | "Looking away",
+        "occlusion": "Sunglasses" | "Hat" | "Mask" | "Multiple" | "None",
+        "facial_emotion": "Neutral" | "Tense" | "Relaxed" | "Confident" | "Uncertain" | "Unreadable"
+      }
+    }
+  ]
+}
+```
+
+## Card Notation
+Use standard notation: Rank + Suit
+- Ranks: A, K, Q, J, T (for 10), 9, 8, 7, 6, 5, 4, 3, 2
+- Suits: h (hearts ♥), d (diamonds ♦), c (clubs ♣), s (spades ♠)
+- Examples: "Ah" = Ace of hearts, "Tc" = 10 of clubs, "9s" = 9 of spades
+
+Output ONLY the JSON object, no markdown code blocks or additional text.

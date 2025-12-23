@@ -4,12 +4,11 @@ Extracts ground truth information from poker commentary audio
 """
 
 import os
-import json
-from typing import Dict, Any, List, Optional
-from loguru import logger
-from openai import OpenAI
+from typing import Any, Dict, List, Optional
 
-from LIMP_Poker_V3.config import config
+from loguru import logger
+
+from LIMP_Poker_V3.models import ASRClient, LLMClient
 
 
 class AudioGTAgent:
@@ -21,13 +20,9 @@ class AudioGTAgent:
     This avoids information leakage during reasoning.
     """
 
-    def __init__(self):
-        self.client = OpenAI(
-            api_key=config.ASR_API_KEY,
-            base_url=config.ASR_BASE_URL,
-        )
-        self.asr_model = config.ASR_MODEL_NAME
-        self.llm_model = config.LLM_MODEL_NAME
+    def __init__(self, use_local_asr: bool = False):
+        self.asr = ASRClient(use_local=use_local_asr)
+        self.llm = LLMClient()
 
     def process(self, audio_path: str) -> Dict[str, Any]:
         """
@@ -51,7 +46,7 @@ class AudioGTAgent:
 
         try:
             # 1. Transcribe with timestamps
-            transcript_data = self._transcribe(audio_path)
+            transcript_data = self.asr.transcribe(audio_path, language="en")
 
             # 2. Extract structured facts
             facts = self._extract_facts(transcript_data.get("text", ""))
@@ -69,39 +64,6 @@ class AudioGTAgent:
         except Exception as e:
             logger.error(f"Audio GT extraction failed: {e}")
             return {"error": str(e)}
-
-    def _transcribe(self, audio_path: str) -> Dict[str, Any]:
-        """
-        Transcribe audio using Whisper with timestamps.
-        """
-        try:
-            with open(audio_path, "rb") as f:
-                transcript = self.client.audio.transcriptions.create(
-                    model=self.asr_model,
-                    file=f,
-                    response_format="verbose_json",
-                )
-
-            # Handle both object and dict response
-            if hasattr(transcript, "segments"):
-                segments = [
-                    {
-                        "start": seg.start if hasattr(seg, "start") else seg.get("start"),
-                        "end": seg.end if hasattr(seg, "end") else seg.get("end"),
-                        "text": (seg.text if hasattr(seg, "text") else seg.get("text", "")).strip(),
-                    }
-                    for seg in transcript.segments
-                ]
-                text = transcript.text
-            else:
-                segments = transcript.get("segments", [])
-                text = transcript.get("text", "")
-
-            return {"text": text, "segments": segments}
-
-        except Exception as e:
-            logger.error(f"Transcription failed: {e}")
-            return {"text": "", "segments": []}
 
     def _extract_facts(self, text: str) -> Dict[str, Any]:
         """
@@ -133,13 +95,11 @@ Extract and output as JSON:
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.llm_model,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
+            return self.llm.complete(
+                prompt=prompt,
                 temperature=0.0,
+                json_response=True,
             )
-            return json.loads(response.choices[0].message.content)
         except Exception as e:
             logger.error(f"Fact extraction failed: {e}")
             return {}
@@ -158,7 +118,6 @@ Extract and output as JSON:
             start = seg.get("start", 0)
             end = seg.get("end", 0)
 
-            # Look for bluff/value indicators in commentary
             gt_entry = {
                 "start": start,
                 "end": end,
@@ -166,7 +125,7 @@ Extract and output as JSON:
                 "labels": {},
             }
 
-            # Simple keyword-based detection (can be enhanced with LLM)
+            # Simple keyword-based detection
             if any(word in text for word in ["bluff", "bluffing", "representing"]):
                 gt_entry["labels"]["is_bluff"] = True
             if any(word in text for word in ["value", "has it", "holding"]):
@@ -210,9 +169,7 @@ Extract and output as JSON:
             start = entry.get("start", 0)
             end = entry.get("end", 0)
 
-            # Check if timestamp falls within window
             if start - window <= timestamp <= end + window:
                 return entry
 
         return None
-

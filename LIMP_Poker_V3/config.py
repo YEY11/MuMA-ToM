@@ -5,6 +5,7 @@ Supports pluggable agent architecture and ablation experiments
 
 import os
 from typing import Dict
+
 from dotenv import load_dotenv
 
 # Load environment variables from project root
@@ -14,10 +15,19 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 class Config:
     """Central configuration for LIMP_Poker_V3 pipeline"""
 
-    # ========== LLM Settings ==========
-    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
-    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "")
-    LLM_MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+    # ========== API Settings ==========
+    API_KEY: str = os.getenv("API_KEY", "")
+    API_BASE_URL: str = os.getenv("API_BASE_URL", "")
+
+    # ========== VLM Settings (Vision-Language Model) ==========
+    VLM_MODEL_NAME: str = os.getenv("VLM_MODEL_NAME", "qwen3-vl-plus")
+
+    # ========== LLM Settings (Language Model for reasoning) ==========
+    LLM_MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "gpt-4o-mini")
+
+    # Backwards compatibility
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", os.getenv("API_KEY", ""))
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", os.getenv("API_BASE_URL", ""))
 
     # ========== ASR Settings (for Ground Truth) ==========
     ASR_API_KEY: str = os.getenv("ASR_API_KEY", os.getenv("LLM_API_KEY", ""))
@@ -50,9 +60,7 @@ class Config:
     USE_POSTURE_SEQUENCE: bool = (
         os.getenv("USE_POSTURE_SEQUENCE", "True").lower() == "true"
     )
-    USE_FACIAL_EMOTION: bool = (
-        os.getenv("USE_FACIAL_EMOTION", "True").lower() == "true"
-    )
+    USE_FACIAL_EMOTION: bool = os.getenv("USE_FACIAL_EMOTION", "True").lower() == "true"
 
     # ========== QA Generation Settings ==========
     QA_LEVELS: list = os.getenv("QA_LEVELS", "action,phase").split(",")
@@ -103,6 +111,11 @@ class Config:
         print(f"Protocol Mode: {cls.PROTOCOL_MODE}")
         print(f"FPS: {cls.FPS}")
         print(f"QA Levels: {cls.QA_LEVELS}")
+        print("\nModel Configuration:")
+        print(f"  VLM Model: {cls.VLM_MODEL_NAME}")
+        print(f"  LLM Model: {cls.LLM_MODEL_NAME}")
+        print(f"  ASR Model: {cls.ASR_MODEL_NAME}")
+        print(f"  API Base URL: {cls.API_BASE_URL or cls.LLM_BASE_URL or 'default'}")
         print("\nEnabled Agents:")
         for name, enabled in cls.AGENT_CONFIG.items():
             status = "✓" if enabled else "✗"
@@ -117,4 +130,3 @@ class Config:
 # Create singleton instance
 config = Config()
 config.ensure_dirs()
-
